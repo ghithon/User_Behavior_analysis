@@ -1,0 +1,25 @@
+# Python 编译缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 数据集，不把原始数据、输出csv上传github
+data/*.xlsx
+*.csv
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# PyCharm / VSCode IDE配置
+.idea/
+*.iml
+.vscode/
+
+# 操作系统垃圾文件
+.DS_Store
+Thumbs.db
+
+# 图片输出可以提交，所以images/不要写进ignore
