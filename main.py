@@ -1,5 +1,16 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import pymysql
+from config import MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_PORT, MYSQL_DB
+
+conn = pymysql.connect(
+    host=MYSQL_HOST,
+    user=MYSQL_USER,
+    password=MYSQL_PASSWORD,
+    port=MYSQL_PORT,
+    database=MYSQL_DB
+)
+
 
 plt.rcParams["font.sans-serif"] = ["SimHei"] #显示中文（让中文汉字不乱码）
 plt.rcParams["axes.unicode_minus"] = False #显示负号（让负号 `-`不乱码）

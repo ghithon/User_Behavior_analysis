@@ -25,9 +25,9 @@
 
 # 安装依赖
 ```bash
-pip install pandas matplotlib
+pip install pymysql pandas matplotlib datetime
 ```
-
+（运行前请在本地新建`config.py`，填写自己的 MySQL 连接信息，执行`mysql_test.py`验证数据库连接）
 
 
 

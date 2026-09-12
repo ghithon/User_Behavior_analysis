@@ -23,3 +23,6 @@ env/
 Thumbs.db
 
 # 图片输出可以提交，所以images/不要写进ignore
+
+#config.py不传进GitThub
+config.py
