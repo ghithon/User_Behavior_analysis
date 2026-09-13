@@ -1,120 +1,103 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import pymysql
-from config import MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_PORT, MYSQL_DB
-
-conn = pymysql.connect(
-    host=MYSQL_HOST,
-    user=MYSQL_USER,
-    password=MYSQL_PASSWORD,
-    port=MYSQL_PORT,
-    database=MYSQL_DB
-)
-
 
 plt.rcParams["font.sans-serif"] = ["SimHei"] #显示中文（让中文汉字不乱码）
 plt.rcParams["axes.unicode_minus"] = False #显示负号（让负号 `-`不乱码）
 
-RAW_DATA_PATH = "./data/UserBehavior.csv"
-CLEAN_SAVE_PATH = "./clean_taobao.csv"
-IMAGE_SAVE_DIR = "./images/"
+# ================= 1.读取SQL导出的4份结果文件 =================
+df_pv_uv = pd.read_csv("pv_uv.csv")       # 总PV UV
+df_dau = pd.read_csv("dau.csv")          # 每日DAU
+df_funnel = pd.read_csv("funnel.csv")    # 漏斗数据
+user_active = pd.read_csv("user_active.csv") # 用户活跃日期（留存计算）
+df_hour = pd.read_csv('hour_dist.csv') # 用户行为24小时时段分布
 
-# ----------------------1、读取csv数据----------------------
-# 从数据集中抽样10万行，不做复杂映射，只用loc赋值
-df = pd.read_csv(RAW_DATA_PATH,
-                 names=["user_id", "item_id", "category_id", "behavior_type", "timestamp"],
-                 nrows=100000)
+# 打印整体PV、UV结果
+print("=====整体指标=====")
+print(f"总PV（全部行为次数）：{df_pv_uv['pv_total'][0]}")
+print(f"总UV（独立用户数）：{df_pv_uv['uv_total'][0]}")
 
-print("原始数据前5行")
-print(df.head())
 
-# behavior_type：1浏览pv，2收藏fav，3加购cart，4购买buy
-# loc方法选择行进行赋值
-df.loc[df["behavior_type"] == 1, "behavior_type"] = "pv"
-df.loc[df["behavior_type"] == 2, "behavior_type"] = "fav"
-df.loc[df["behavior_type"] == 3, "behavior_type"] = "cart"
-df.loc[df["behavior_type"] == 4, "behavior_type"] = "buy"
-
-# 时间处理：把时间戳转为datetime，dt提取小时
-df["datetime"] = pd.to_datetime(df["timestamp"], unit="s")
-df["hour"] = df["datetime"].dt.hour
-
-# drop_duplicates方法去除重复值
-df = df.drop_duplicates(subset=["user_id", "item_id", "behavior_type", "timestamp"])
-print("清洗之后数据总行数：", len(df))
-
-# 如果数据为空直接结束，防止报错
-if len(df) <= 0:
-    print("警告，数据集为空，请检查文件路径！")
-    exit()
-
-# ----------------------2、基础指标统计：PV、UV（布尔索引筛选）----------------------
-# PV：浏览行为总次数
-pv_data = df[df["behavior_type"] == "pv"]
-pv_count = len(pv_data)
-
-# UV：去重用户总人数 nunique()
-uv_count = df["user_id"].nunique()
-
-# 收藏、加购、购买
-fav_count = len(df[df["behavior_type"] == "fav"])
-cart_count = len(df[df["behavior_type"] == "cart"])
-buy_count = len(df[df["behavior_type"] == "buy"])
-
-print("="*40)
-print(f"浏览PV次数：{pv_count}")
-print(f"独立用户UV数量：{uv_count}")
-print(f"收藏次数：{fav_count}")
-print(f"加购次数：{cart_count}")
-print(f"购买次数：{buy_count}")
-print("="*40)
-
-# ----------------------3、绘制转化漏斗柱状图（matplotlib基础绘图）----------------------
-x_data = ["浏览", "收藏", "加购", "购买"]
-y_data = [pv_count, fav_count, cart_count, buy_count]
-
-plt.figure(figsize=(8, 5))
-plt.bar(x=x_data, height=y_data, color=["#3498db", "#2ecc71", "#f39c12", "#e74c3c"])
-plt.title("电商用户行为转化漏斗图（抽样数据集）")
-plt.xlabel("用户行为环节")
-plt.ylabel("行为发生次数")
-plt.savefig(f"{IMAGE_SAVE_DIR}bar.png", dpi=300, bbox_inches="tight") # 保存图片
-plt.show()
-
-# ----------------------4、24小时用户行为分布图 groupby----------------------
-hour_result = df.groupby("hour").size()
-print("\n按小时统计行为数量")
-print(hour_result)
-
+# ================= 2.DAU趋势图 =================
+df_dau["dt_date"] = pd.to_datetime(df_dau["dt_date"])
 plt.figure(figsize=(10,4))
-plt.plot(hour_result.index, hour_result.values, marker="o")
-plt.title("全天24小时用户行为分布")
-plt.xlabel("小时")
-plt.ylabel("行为总次数")
-plt.xticks(range(0,24))
-plt.grid(alpha=0.3)
-plt.savefig(f"{IMAGE_SAVE_DIR}funnel.png", dpi=300, bbox_inches="tight")  # 保存图片
+plt.plot(df_dau["dt_date"], df_dau["dau"], marker="o", color="#2E86AB")
+plt.title("每日活跃用户DAU趋势")
+plt.xlabel("日期")
+plt.ylabel("DAU(日活跃用户)")
+plt.xticks(rotation=30)
+plt.tight_layout()
+plt.savefig("images/dau_trend.png") # 保存到images文件夹
 plt.show()
 
-# ----------------------5、统计类目访问TOP15  groupby + sort_values----------------------
-# 按类目、行为分组统计数量
-cat_group = df.groupby(["category_id", "behavior_type"]).size()
-# unstack可以做行转列
-cat_table = cat_group.unstack(fill_value=0)
 
-print("\n各个类目行为统计表")
-print(cat_table.head())
+# =================3. 用户行为转化漏斗 =================
+# 行为名称映射，按漏斗顺序：浏览→收藏→加购→购买
+map_dict = {"pv":"浏览","fav":"收藏","cart":"加购","buy":"购买"}
+df_funnel["behavior_name"] = df_funnel["behavior_type"].map(map_dict)
+order = ["浏览","收藏","加购","购买"]
+df_funnel["behavior_name"] = pd.Categorical(df_funnel["behavior_name"],categories=order,ordered=True)
+df_funnel = df_funnel.sort_values("behavior_name")
 
-# 判断是否存在pv列，防止抽样没有浏览数据报错
-if "pv" in cat_table.columns:
-    # sort_values排序
-    top15_cat = cat_table.sort_values(by="pv", ascending=False).head(15)
-    print("\n浏览量TOP15类目")
-    print(top15_cat)
-    # 保存结果到csv文件
-    top15_cat.to_csv("top15_category.csv", encoding="utf-8")
-    print("\n✅已经保存 top15_category.csv 到项目文件夹")
-else:
-    print("抽样数据集无浏览pv数据，跳过类目排序")
+# 计算转化率
+pv_total = df_funnel[df_funnel["behavior_name"]=="浏览"]["user_cnt"].values[0]
+df_funnel["转化率"] = df_funnel["user_cnt"] / pv_total
+print("\n=====转化漏斗指标=====")
+print(df_funnel)
+#绘制行为转化漏斗图
+plt.rcParams["font.sans-serif"] = ["Microsoft YaHei"]
+plt.rcParams["axes.unicode_minus"] = False
+plt.figure(figsize=(9,5))
+plt.bar(df_funnel["behavior_name"], df_funnel["user_cnt"], color=["#2E86AB","#A23B72","#F18F01","#C73E1D"])
+plt.title("用户行为转化漏斗")
+plt.xlabel("用户行为")
+plt.ylabel("独立用户数量")
 
-print("\n========项目全部执行结束========")
+# 在柱子上标注人数+转化率
+for i,row in df_funnel.iterrows():
+    plt.text(i, row["user_cnt"]+8000, f'{row["user_cnt"]}\n转化率：{row["转化率"]:.2%}',ha="center")
+
+plt.tight_layout()
+plt.savefig("images/funnel_chart.png") # 保存到images文件夹
+plt.show()
+
+# =================4. 用户24小时行为时段分布==================
+plt.rcParams["font.sans-serif"] = ["Microsoft YaHei"]
+plt.rcParams["axes.unicode_minus"] = False
+plt.figure(figsize=(12,4))
+plt.bar(df_hour["hour"], df_hour["behavior_cnt"], color="#6A994E")
+plt.title("用户24小时行为时段分布")
+plt.xlabel("小时（0~23点）")
+plt.ylabel("行为次数")
+plt.xticks(range(0,24))
+plt.tight_layout()
+plt.savefig("images/hour_dist.png") # 保存到images文件夹
+plt.show()
+
+# ==================5.次日留存计算=================
+user_active["dt_date"] = pd.to_datetime(user_active["dt_date"])
+# 按用户分组，获取下一次活跃日期
+user_active = user_active.sort_values(by=["user_id","dt_date"])
+user_active["next_date"] = user_active.groupby("user_id")["dt_date"].shift(-1)
+
+# 判断是否为次日回来
+user_active["is_next_day"] = (user_active["next_date"] - user_active["dt_date"]).dt.days ==1
+
+# 分组统计当日活跃人数、次日回流人数、留存率
+retention_df = user_active.groupby("dt_date").agg(
+    dau = ("user_id","nunique"),
+    return_user = ("is_next_day","sum")
+).reset_index()
+retention_df["retention_rate"] = retention_df["return_user"] / retention_df["dau"]
+print("\n=====次日留存结果=====")
+print(retention_df)
+
+# 留存率可视化
+plt.figure(figsize=(10,4))
+plt.plot(retention_df["dt_date"], retention_df["retention_rate"],marker="o",color="#A23B72")
+plt.title("用户次日留存率趋势")
+plt.xlabel("日期")
+plt.ylabel("次日留存率")
+plt.xticks(rotation=30)
+plt.tight_layout()
+plt.savefig("images/retention.png") # 保存到images文件夹
+plt.show()
